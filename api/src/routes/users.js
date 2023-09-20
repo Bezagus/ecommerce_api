@@ -1,147 +1,78 @@
 const express = require('express');
-const {User} = require('../db');
-const bcrypt = require('bcrypt');
-const transporter = require('./middleware/nodemailer');
-const { Op } = require('sequelize');
-const { NODEMAILER_EMIAL } = process.env
+const validatorHandler = require('../Middlewares/validator.handler');
+const { createUserSchema, userIdSchema, userNicknameSchema, userEmailSchema} = require('../Schema/user.schema')
+
+const userService = require('../Service/user.service')
 
 
 const app = express.Router();
+const usersService = new userService()
 
-app.get('/',async (req, res)=>{
+app.get('/',async (req, res, next)=>{
     try{
-        const allUsers = await User.findAll({
-            attributes: ['user_id', 'name', 'nickname', 'img', 'email', 'status', 'createdAt']
-        })
 
-        if(allUsers.length <= 0){
-            return res.status(200).send({message: 'There are no users'})
-        }
-
+        const allUsers = await usersService.getAllUsers()
         return res.status(200).json(allUsers)
-    }catch{
-        return res.status(500).send({error: 'unexpected server error'})
+
+    }catch(error){
+        next(error)
     }
 })
 
-app.get('/oneUser/:param',async (req, res)=>{
-    try{
-        const {param} = req.params
+app.get('/userNickname/:nickname',
+    validatorHandler(userNicknameSchema, 'params'),
+    async (req, res, next)=>{
+        try{
+            const {nickname} = req.params
 
-        if(!param){
-            return res.status(400).send({error:'Information required not provided.'})
+            const getUserName = await usersService.getUserName(nickname)
+            return res.status(200).send(getUserName)
+
+        }catch(error){
+            next(error)
         }
-
-        const user = await User.findOne({
-            where: {
-              [Op.or]: [
-                { email: param },
-                { nickname: param }
-              ]
-            },
-            attributes: ['user_id', 'name', 'nickname', 'img', 'email', 'status', 'createdAt']
-          });
-
-        if(!user){
-            return res.status(200).send({message: 'User not found'})
-        }
-
-        return res.status(200).send(user)
-
-    }catch{
-        return res.status(500).send({error: 'unexpected server error'})
-    }
 })
 
-app.get('/userId',async (req, res)=>{
-    try{
-        const {id} = req.query
+app.get('/userEmial/:email',
+    validatorHandler(userEmailSchema, 'params '),
+    async (req, res, next)=>{
+        try{
+            const {email} = req.params
 
-        if(!id){
-            return res.status(400).send({error:'Information required not provided.'})
+            const getUserEmail = await userService.getUserEmail(email)
+            return res.status(200).send(getUserEmail)
+
+        }catch(error){
+            next(error)
         }
-
-        const user = await User.findOne({
-            where: {
-                user_id: id
-            },
-            attributes: ['user_id', 'name', 'nickname', 'img', 'email', 'status', 'createdAt']
-          });
-
-        if(!user){
-            return res.status(200).send({message: 'User not found'})
-        }
-
-        return res.status(200).send(user)
-
-    }catch{
-        return res.status(500).send({error: 'unexpected server error'})
-    }
 })
 
-app.post('/create',async (req, res)=>{
-    try{
-        const {name, nickname, img, email, password, verificationPassword} = req.body;
+app.get('/userId/:id',
+    validatorHandler(userIdSchema, 'params'),
+    async (req, res, next)=>{
+        try{
+            const {id} = req.params
+            const getUserId = await usersService.getUserId(id)
+            return res.status(200).send(getUserId)
 
-        if(!name || !nickname || !email || !password || !verificationPassword){
-            return res.status(400).send({ error: 'required information is missing'})
+        }catch(error){
+            next(error)
         }
+})
 
-        const convertName = name.toLowerCase();
-        const convertNickname = nickname.toLowerCase();
-        const convertEmail = email.toLowerCase();
+app.post('/create',
+    validatorHandler(createUserSchema, 'body'),
+    async (req, res, next)=>{
+        try{
+            const newUser = await usersService.createUser(req.body)
 
-        const userEmailValidator = await User.findOne({
-            where:{
-                email: convertEmail
-            }
-        })
+            return res.status(201).json({
+                message:'user created successfully',
+                user: newUser
+            })
 
-        if(userEmailValidator){
-            return res.status(409).send({error:'provided email already exists'})
-        }
-
-        const nicknameValidator = await User.findOne({
-            where: {
-                nickname: convertNickname
-            }
-        });
-
-        if(nicknameValidator){
-            return res.status(409).send({error: 'nickname already exists'})
-        }
-
-        const regexEmail = /^\S+@\S+\.\S+$/
-
-        if(!regexEmail.test(convertEmail)){
-            return res.status(400).send({error:'invalid email'})
-        }
-
-        if(password !== verificationPassword){
-            return res.status(400).send({error: 'passwords do not match'})
-        }
-
-        const hashPassword = await bcrypt.hash(password, 8)
-
-        const newUser = await User.create({
-            name: convertName,
-            nickname: convertNickname,
-            img: img? img : 'https://cdn-icons-png.flaticon.com/512/847/847969.png',
-            email: convertEmail,
-            password: hashPassword
-        })
-
-       await transporter.sendMail({
-            from: `"BezInnovate" <${NODEMAILER_EMIAL}>`,
-            to: convertEmail,
-            subject: "Welcome to BezInnovate!! User verification pending",
-            html: "<b>Hello world?</b>", // html body
-          });
-          
-        return res.status(201).send({message:'user created successfully'})
-
-    }catch{
-        return res.status(500).send({error: 'unexpected server error'})
+        }catch(error){
+            next(error)
     }
 })
 

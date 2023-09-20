@@ -1,11 +1,13 @@
 const { Router } = require('express');
 const users = require('./users')
 
+function routersApp(app){
+    const router = Router();
+    app.use('/api/v1', router)
 
-const router = Router();
+    router.use('/user',users)
+}
 
-router.use('/user', users)
 
-
-module.exports = router;
+module.exports = routersApp;
  
